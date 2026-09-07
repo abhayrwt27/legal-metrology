@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.db import models
-
 from instruments.models import Instrument
 
 
@@ -23,6 +22,16 @@ class VerificationApplication(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="verification_applications",
+    )
+
+    # Officer currently responsible for this application.
+    # Can be an LMO or GATC.
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_verification_applications",
     )
 
     application_number = models.CharField(
