@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+
 from instruments.models import Instrument
 
 
@@ -17,15 +18,11 @@ class VerificationApplication(models.Model):
         on_delete=models.CASCADE,
         related_name="verification_applications",
     )
-
     applicant = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="verification_applications",
     )
-
-    # Officer currently responsible for this application.
-    # Can be an LMO or GATC.
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -33,22 +30,47 @@ class VerificationApplication(models.Model):
         blank=True,
         related_name="assigned_verification_applications",
     )
-
-    application_number = models.CharField(
-        max_length=50,
-        unique=True,
-    )
-
+    application_number = models.CharField(max_length=50, unique=True)
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
         default=Status.SUBMITTED,
     )
-
     remarks = models.TextField(blank=True)
-
     submitted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.application_number} - {self.instrument.name}"
+
+
+class Inspection(models.Model):
+    class Result(models.TextChoices):
+        PASSED = "PASSED", "Passed"
+        FAILED = "FAILED", "Failed"
+
+    application = models.OneToOneField(
+        VerificationApplication,
+        on_delete=models.CASCADE,
+        related_name="inspection",
+    )
+    inspector = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="inspections",
+    )
+    inspection_date = models.DateField()
+    measurements = models.JSONField(default=dict)
+    result = models.CharField(
+        max_length=10,
+        choices=Result.choices,
+    )
+    remarks = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return (
+            f"{self.application.application_number} - "
+            f"{self.result}"
+        )

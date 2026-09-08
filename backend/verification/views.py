@@ -7,10 +7,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from instruments.models import Instrument
-from instruments.permissions import IsLMOOrAdmin, IsOfficer
+from instruments.permissions import IsGATC, IsLMOOrAdmin, IsOfficer
 
-from .models import VerificationApplication
-from .serializers import VerificationApplicationSerializer
+from .models import Inspection, VerificationApplication
+from .serializers import (
+    InspectionSerializer,
+    VerificationApplicationSerializer,
+)
 
 
 User = get_user_model()
@@ -52,7 +55,6 @@ class VerificationApplicationListCreateView(generics.ListCreateAPIView):
                 }
             )
 
-        # Generate application number
         last_application = (
             VerificationApplication.objects
             .order_by("-id")
@@ -114,7 +116,6 @@ class OfficerApplicationListView(generics.ListAPIView):
         if user.role == "GATC":
             queryset = queryset.filter(assigned_to=user)
 
-        # LMO and ADMIN can see all applications
         return queryset
 
 
@@ -142,7 +143,6 @@ class OfficerApplicationDetailView(generics.RetrieveAPIView):
         if user.role == "GATC":
             queryset = queryset.filter(assigned_to=user)
 
-        # LMO and ADMIN can open any application
         return queryset
 
 
@@ -156,15 +156,9 @@ class AssignApplicationView(APIView):
     @transaction.atomic
     def patch(self, request, pk):
 
-        # ----------------------------------------------------
-        # IMPORTANT:
-        # Lock ONLY the VerificationApplication row.
-        #
-        # Do NOT use select_related() together with
-        # select_for_update() here because assigned_to is
-        # nullable and PostgreSQL rejects the resulting
-        # outer join with FOR UPDATE.
-        # ----------------------------------------------------
+        # Lock only the application row.
+        # This avoids PostgreSQL's nullable outer-join
+        # FOR UPDATE problem.
 
         try:
             application = (
@@ -181,7 +175,6 @@ class AssignApplicationView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Get officer ID from request
         officer_id = request.data.get("officer_id")
 
         if not officer_id:
@@ -192,7 +185,6 @@ class AssignApplicationView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Make sure selected user is an LMO or GATC
         try:
             officer = User.objects.get(
                 id=officer_id,
@@ -210,13 +202,9 @@ class AssignApplicationView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Assign application
         application.assigned_to = officer
-
-        # Change status
         application.status = VerificationApplication.Status.ASSIGNED
 
-        # Save changes
         application.save(
             update_fields=[
                 "assigned_to",
@@ -225,7 +213,6 @@ class AssignApplicationView(APIView):
             ]
         )
 
-        # Fetch related data normally AFTER the update
         application = (
             VerificationApplication.objects
             .select_related(
@@ -246,4 +233,74 @@ class AssignApplicationView(APIView):
                 "application": serializer.data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+# ============================================================
+# GATC - CREATE INSPECTION
+# ============================================================
+
+class GATCInspectionCreateView(generics.CreateAPIView):
+    permission_classes = [IsGATC]
+    serializer_class = InspectionSerializer
+
+    def perform_create(self, serializer):
+        application = serializer.validated_data["application"]
+
+        # Make sure this application is actually assigned
+        # to the logged-in GATC.
+        if application.assigned_to != self.request.user:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "This application is not assigned to you."
+            )
+
+        # Prevent multiple inspections for the same application.
+        if Inspection.objects.filter(
+            application=application
+        ).exists():
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                {
+                    "application": (
+                        "An inspection already exists "
+                        "for this application."
+                    )
+                }
+            )
+
+        # Move application into inspection stage.
+        application.status = (
+            VerificationApplication.Status.INSPECTION
+        )
+        application.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        serializer.save(
+            inspector=self.request.user
+        )
+
+
+# ============================================================
+# GATC - VIEW OWN INSPECTION
+# ============================================================
+
+class GATCInspectionDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsGATC]
+    serializer_class = InspectionSerializer
+
+    def get_queryset(self):
+        return (
+            Inspection.objects
+            .filter(inspector=self.request.user)
+            .select_related(
+                "application",
+                "inspector",
+            )
         )
