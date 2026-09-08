@@ -1,11 +1,16 @@
 from django.urls import path
 
 from .views import (
+    ApplicationDecisionView,
     AssignApplicationView,
+    CertificateDetailView,
+    CertificateQRCodeView,
+    DashboardView,
     GATCInspectionCreateView,
     GATCInspectionDetailView,
     OfficerApplicationDetailView,
     OfficerApplicationListView,
+    PublicCertificateVerificationView,
     VerificationApplicationDetailView,
     VerificationApplicationListCreateView,
 )
@@ -17,6 +22,13 @@ urlpatterns = [
         "",
         VerificationApplicationListCreateView.as_view(),
         name="verification-list-create",
+    ),
+
+    #certificate
+    path(
+        "certificates/<int:pk>/",
+        CertificateDetailView.as_view(),
+        name="certificate-detail",
     ),
 
     path(
@@ -45,6 +57,13 @@ urlpatterns = [
         name="assign-application",
     ),
 
+    # LMO / Admin decision
+    path(
+        "officer/applications/<int:pk>/decision/",
+        ApplicationDecisionView.as_view(),
+        name="application-decision",
+    ),
+
     # GATC inspection
     path(
         "officer/inspections/",
@@ -57,4 +76,23 @@ urlpatterns = [
         GATCInspectionDetailView.as_view(),
         name="gatc-inspection-detail",
     ),
+
+    path(
+        "public/certificates/<str:certificate_number>/",
+        PublicCertificateVerificationView.as_view(),
+        name="public-certificate-verification",
+    ),
+
+    path(
+        "public/certificates/<str:certificate_number>/qr/",
+        CertificateQRCodeView.as_view(),
+        name="certificate-qr",
+    ),
+
+    path(
+        "dashboard/",
+        DashboardView.as_view(),
+        name="dashboard",
+    ),
+
 ]

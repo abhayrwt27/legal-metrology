@@ -74,3 +74,47 @@ class Inspection(models.Model):
             f"{self.application.application_number} - "
             f"{self.result}"
         )
+
+
+class Certificate(models.Model):
+    class Status(models.TextChoices):
+        VALID = "VALID", "Valid"
+        REVOKED = "REVOKED", "Revoked"
+        EXPIRED = "EXPIRED", "Expired"
+
+    application = models.OneToOneField(
+        VerificationApplication,
+        on_delete=models.PROTECT,
+        related_name="certificate",
+    )
+    certificate_number = models.CharField(
+        max_length=50,
+        unique=True,
+    )
+    instrument = models.ForeignKey(
+        Instrument,
+        on_delete=models.PROTECT,
+        related_name="certificates",
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="certificates",
+    )
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="issued_certificates",
+    )
+    issue_date = models.DateField()
+    valid_until = models.DateField()
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.VALID,
+    )
+    remarks = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.certificate_number
