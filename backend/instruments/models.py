@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -14,6 +16,14 @@ class Instrument(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="instruments",
+    )
+
+    # Permanent identity of the physical instrument.
+    # This value never changes during re-verification/renewal.
+    instrument_uid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
     )
 
     name = models.CharField(max_length=150)

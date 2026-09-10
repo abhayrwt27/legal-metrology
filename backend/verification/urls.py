@@ -4,6 +4,7 @@ from .views import (
     ApplicationDecisionView,
     AssignApplicationView,
     CertificateDetailView,
+    CertificateExpiryAlertView,
     CertificateQRCodeView,
     DashboardView,
     GATCInspectionCreateView,
@@ -11,8 +12,13 @@ from .views import (
     OfficerApplicationDetailView,
     OfficerApplicationListView,
     PublicCertificateVerificationView,
+    PublicInstrumentVerificationView,
     VerificationApplicationDetailView,
     VerificationApplicationListCreateView,
+    VerificationScheduleCreateView,
+    InstrumentQRCodeView,
+    VerificationDocumentListCreateView,
+    SearchView,
 )
 
 
@@ -57,6 +63,12 @@ urlpatterns = [
         name="assign-application",
     ),
 
+    path(
+        "officer/schedules/",
+        VerificationScheduleCreateView.as_view(),
+        name="verification-schedule-create",
+    ),
+
     # LMO / Admin decision
     path(
         "officer/applications/<int:pk>/decision/",
@@ -78,6 +90,18 @@ urlpatterns = [
     ),
 
     path(
+        "public/instruments/<uuid:instrument_uid>/",
+        PublicInstrumentVerificationView.as_view(),
+        name="public-instrument-verification",
+    ),
+
+    path(
+        "public/instruments/<uuid:instrument_uid>/qr/",
+        InstrumentQRCodeView.as_view(),
+        name="instrument-qr",
+    ),
+
+    path(
         "public/certificates/<str:certificate_number>/",
         PublicCertificateVerificationView.as_view(),
         name="public-certificate-verification",
@@ -95,4 +119,21 @@ urlpatterns = [
         name="dashboard",
     ),
 
+    path(
+        "certificates/expiry-alerts/",
+        CertificateExpiryAlertView.as_view(),
+        name="certificate-expiry-alerts",
+    ),
+
+    path(
+        "documents/",
+        VerificationDocumentListCreateView.as_view(),
+        name="verification-documents",
+    ),
+
+    path(
+        "search/",
+        SearchView.as_view(),
+        name="search",
+    ),
 ]

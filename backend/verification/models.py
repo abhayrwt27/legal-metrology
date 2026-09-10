@@ -9,9 +9,15 @@ class VerificationApplication(models.Model):
         SUBMITTED = "SUBMITTED", "Submitted"
         UNDER_REVIEW = "UNDER_REVIEW", "Under Review"
         ASSIGNED = "ASSIGNED", "Assigned"
+        SCHEDULED = "SCHEDULED", "Scheduled"
         INSPECTION = "INSPECTION", "Inspection"
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
+
+    class ApplicationType(models.TextChoices):
+        INITIAL = "INITIAL", "Initial Verification"
+        RE_VERIFICATION = "RE_VERIFICATION", "Re-verification"
+        RENEWAL = "RENEWAL", "Renewal"
 
     instrument = models.ForeignKey(
         Instrument,
@@ -36,12 +42,65 @@ class VerificationApplication(models.Model):
         choices=Status.choices,
         default=Status.SUBMITTED,
     )
+
+    application_type = models.CharField(
+        max_length=20,
+        choices=ApplicationType.choices,
+        default=ApplicationType.INITIAL,
+    )
+
+    previous_application = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="renewal_applications",
+    )
+
     remarks = models.TextField(blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.application_number} - {self.instrument.name}"
+
+
+class VerificationSchedule(models.Model):
+    class Status(models.TextChoices):
+        SCHEDULED = "SCHEDULED", "Scheduled"
+        RESCHEDULED = "RESCHEDULED", "Rescheduled"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    application = models.ForeignKey(
+        VerificationApplication,
+        on_delete=models.CASCADE,
+        related_name="schedules",
+    )
+    scheduled_date = models.DateField()
+    scheduled_time = models.TimeField()
+    scheduled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_verification_schedules",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.SCHEDULED,
+    )
+    remarks = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["scheduled_date", "scheduled_time"]
+
+    def __str__(self):
+        return (
+            f"{self.application.application_number} - "
+            f"{self.scheduled_date} {self.scheduled_time}"
+        )
 
 
 class Inspection(models.Model):
@@ -118,3 +177,54 @@ class Certificate(models.Model):
 
     def __str__(self):
         return self.certificate_number
+
+
+class VerificationDocument(models.Model):
+    class DocumentType(models.TextChoices):
+        INSTRUMENT_PHOTO = "INSTRUMENT_PHOTO", "Instrument Photo"
+        VERIFICATION_DOCUMENT = "VERIFICATION_DOCUMENT", "Verification Document"
+        INSPECTION_PHOTO = "INSPECTION_PHOTO", "Inspection Photo"
+        OTHER = "OTHER", "Other"
+
+    application = models.ForeignKey(
+        VerificationApplication,
+        on_delete=models.CASCADE,
+        related_name="documents",
+        null=True,
+        blank=True,
+    )
+
+    instrument = models.ForeignKey(
+        Instrument,
+        on_delete=models.CASCADE,
+        related_name="documents",
+        null=True,
+        blank=True,
+    )
+
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="uploaded_verification_documents",
+    )
+
+    document_type = models.CharField(
+        max_length=30,
+        choices=DocumentType.choices,
+    )
+
+    file = models.FileField(
+        upload_to="verification_documents/%Y/%m/",
+    )
+
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    def __str__(self):
+        return self.file.name

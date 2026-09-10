@@ -10,6 +10,7 @@ class InstrumentSerializer(serializers.ModelSerializer):
         model = Instrument
         fields = [
             "id",
+            "instrument_uid",
             "owner",
             "name",
             "instrument_type",
@@ -27,6 +28,7 @@ class InstrumentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "instrument_uid",
             "owner",
             "status",
             "created_at",

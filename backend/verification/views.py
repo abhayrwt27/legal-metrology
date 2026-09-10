@@ -3,22 +3,35 @@ from io import BytesIO
 
 import qrcode
 
-from django.db import transaction
+from django.db import models, transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied
 
 from instruments.models import Instrument
 from instruments.permissions import IsGATC, IsLMOOrAdmin, IsOfficer
 
-from .models import Certificate, Inspection, VerificationApplication
+from .models import (
+    Certificate,
+    Inspection,
+    VerificationApplication,
+    VerificationSchedule,
+    VerificationDocument,
+)
 from .serializers import (
     InspectionSerializer,
     VerificationApplicationSerializer,
+    VerificationScheduleSerializer,
+    PublicInstrumentVerificationSerializer,
+    VerificationDocumentSerializer,
 )
 
 
@@ -34,7 +47,7 @@ class VerificationApplicationListCreateView(generics.ListCreateAPIView):
         return (
             VerificationApplication.objects
             .filter(applicant=self.request.user)
-            .select_related("instrument", "assigned_to")
+            .select_related("instrument", "assigned_to", "previous_application")
             .order_by("-submitted_at")
         )
 
@@ -47,7 +60,6 @@ class VerificationApplicationListCreateView(generics.ListCreateAPIView):
             owner=self.request.user,
         )
 
-        # Generate application number
         last_application = (
             VerificationApplication.objects
             .order_by("-id")
@@ -66,6 +78,7 @@ class VerificationApplicationListCreateView(generics.ListCreateAPIView):
             instrument=instrument,
             application_number=application_number,
         )
+
 
 
 class VerificationApplicationDetailView(
@@ -222,6 +235,46 @@ class AssignApplicationView(APIView):
                 ).data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+# ============================================================
+# LMO / ADMIN - SCHEDULE VERIFICATION
+# ============================================================
+
+class VerificationScheduleCreateView(generics.CreateAPIView):
+    permission_classes = [IsLMOOrAdmin]
+    serializer_class = VerificationScheduleSerializer
+
+    def perform_create(self, serializer):
+        application = serializer.validated_data["application"]
+
+        # Prevent scheduling an application that is already
+        # approved or rejected.
+        if application.status not in [
+            VerificationApplication.Status.ASSIGNED,
+            VerificationApplication.Status.SCHEDULED,
+        ]:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                "Only assigned applications can be scheduled."
+            )
+
+        schedule = serializer.save(
+            scheduled_by=self.request.user,
+        )
+
+        # Mark application as scheduled.
+        application.status = (
+            VerificationApplication.Status.SCHEDULED
+        )
+
+        application.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
         )
 
 
@@ -543,6 +596,135 @@ class CertificateDetailView(APIView):
 
 
 # ============================================================
+# CERTIFICATE - EXPIRY ALERTS
+# ============================================================
+
+class CertificateExpiryAlertView(APIView):
+    """
+    Returns certificate expiry information.
+
+    OWNER:
+        Sees only their own certificates.
+
+    LMO / ADMIN:
+        Sees certificates from all owners.
+
+    Expiry categories:
+        EXPIRED
+        EXPIRING_SOON  -> expires within 30 days
+        VALID          -> more than 30 days remaining
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = date.today()
+
+        queryset = (
+            Certificate.objects
+            .select_related(
+                "instrument",
+                "owner",
+            )
+            .order_by("valid_until")
+        )
+
+        # OWNER sees only their certificates.
+        if request.user.role == "OWNER":
+            queryset = queryset.filter(owner=request.user)
+
+        # LMO / ADMIN can see all certificates.
+        elif request.user.role in ["LMO", "ADMIN"]:
+            pass
+
+        else:
+            return Response(
+                {
+                    "error": "You do not have permission to view expiry alerts."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        alerts = []
+
+        for certificate in queryset:
+            days_remaining = (
+                certificate.valid_until - today
+            ).days
+
+            if days_remaining < 0:
+                expiry_status = "EXPIRED"
+
+                # Keep database status synchronized.
+                if certificate.status == Certificate.Status.VALID:
+                    certificate.status = Certificate.Status.EXPIRED
+                    certificate.save(
+                        update_fields=["status"]
+                    )
+
+            elif days_remaining <= 30:
+                expiry_status = "EXPIRING_SOON"
+
+            else:
+                expiry_status = "VALID"
+
+            alerts.append(
+                {
+                    "certificate_id": certificate.id,
+                    "certificate_number": certificate.certificate_number,
+
+                    "instrument": {
+                        "id": certificate.instrument.id,
+                        "name": certificate.instrument.name,
+                        "serial_number": (
+                            certificate.instrument.serial_number
+                        ),
+                    },
+
+                    "owner": {
+                        "id": certificate.owner.id,
+                        "username": certificate.owner.username,
+                    },
+
+                    "issue_date": certificate.issue_date,
+                    "valid_until": certificate.valid_until,
+                    "days_remaining": days_remaining,
+
+                    "expiry_status": expiry_status,
+                    "certificate_status": certificate.status,
+                }
+            )
+
+        return Response(
+            {
+                "today": today,
+                "total_certificates": len(alerts),
+
+                "expired": sum(
+                    1
+                    for alert in alerts
+                    if alert["expiry_status"] == "EXPIRED"
+                ),
+
+                "expiring_soon": sum(
+                    1
+                    for alert in alerts
+                    if alert["expiry_status"] == "EXPIRING_SOON"
+                ),
+
+                "valid": sum(
+                    1
+                    for alert in alerts
+                    if alert["expiry_status"] == "VALID"
+                ),
+
+                "alerts": alerts,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+# ============================================================
 # PUBLIC - CERTIFICATE VERIFICATION
 # ============================================================
 
@@ -646,6 +828,21 @@ class PublicCertificateVerificationView(APIView):
         )
 
 
+class PublicInstrumentVerificationView(generics.RetrieveAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = PublicInstrumentVerificationSerializer
+    lookup_field = "instrument_uid"
+
+    def get_queryset(self):
+        return (
+            Instrument.objects
+            .prefetch_related(
+                "certificates__application",
+            )
+            .all()
+        )
+
+
 # ============================================================
 # PUBLIC - CERTIFICATE QR CODE
 # ============================================================
@@ -701,6 +898,38 @@ class CertificateQRCodeView(APIView):
             buffer.getvalue(),
             content_type="image/png",
         )
+
+
+class InstrumentQRCodeView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, instrument_uid):
+        instrument = get_object_or_404(
+            Instrument,
+            instrument_uid=instrument_uid,
+        )
+
+        verification_url = (
+            f"{request.scheme}://{request.get_host()}"
+            f"/api/verification/public/instruments/{instrument.instrument_uid}/"
+        )
+
+        qr = qrcode.QRCode(
+            version=1,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(verification_url)
+        qr.make(fit=True)
+
+        qr_image = qr.make_image()
+
+        response = HttpResponse(
+            content_type="image/png",
+        )
+        qr_image.save(response, format="PNG")
+
+        return response
 
 
 # ============================================================
@@ -939,4 +1168,264 @@ class DashboardView(APIView):
                 "error": "Unsupported user role."
             },
             status=status.HTTP_403_FORBIDDEN,
+        )
+
+
+class VerificationDocumentListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = VerificationDocumentSerializer
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        queryset = (
+            VerificationDocument.objects
+            .select_related(
+                "application",
+                "instrument",
+                "uploaded_by",
+            )
+            .order_by("-uploaded_at")
+        )
+
+        if user.role == "OWNER":
+            queryset = queryset.filter(
+                models.Q(
+                    instrument__owner=user
+                )
+                |
+                models.Q(
+                    application__applicant=user
+                )
+            )
+
+        elif user.role == "GATC":
+            queryset = queryset.filter(
+                application__assigned_to=user
+            )
+
+        elif user.role in ["LMO", "ADMIN"]:
+            pass
+
+        else:
+            queryset = queryset.none()
+
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+
+        application_id = self.request.data.get("application")
+        instrument_id = self.request.data.get("instrument")
+
+        application = None
+        instrument = None
+
+        if application_id:
+            application = get_object_or_404(
+                VerificationApplication,
+                id=application_id,
+            )
+
+        if instrument_id:
+            instrument = get_object_or_404(
+                Instrument,
+                id=instrument_id,
+            )
+
+        # OWNER
+        if user.role == "OWNER":
+            if application and application.applicant != user:
+                raise PermissionDenied(
+                    "You cannot upload documents to this application."
+                )
+
+            if instrument and instrument.owner != user:
+                raise PermissionDenied(
+                    "You cannot upload documents to this instrument."
+                )
+
+        # GATC
+        elif user.role == "GATC":
+            if not application:
+                raise ValidationError(
+                    "GATC uploads must be linked to an application."
+                )
+
+            if application.assigned_to != user:
+                raise PermissionDenied(
+                    "This application is not assigned to you."
+                )
+
+        elif user.role not in ["LMO", "ADMIN"]:
+            raise PermissionDenied(
+                "You do not have permission to upload documents."
+            )
+
+        if not application and not instrument:
+            raise ValidationError(
+                "Provide either an application or an instrument."
+            )
+
+        serializer.save(
+            uploaded_by=user,
+            application=application,
+            instrument=instrument,
+        )
+
+
+class SearchView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        query = request.query_params.get("q", "").strip()
+
+        if not query:
+            return Response(
+                {
+                    "error": "Search query 'q' is required."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+
+        instruments = Instrument.objects.select_related("owner")
+
+        applications = VerificationApplication.objects.select_related(
+            "instrument",
+            "applicant",
+            "assigned_to",
+        )
+
+        certificates = Certificate.objects.select_related(
+            "instrument",
+            "owner",
+            "application",
+        )
+
+        # -----------------------------
+        # ROLE BASED FILTERING
+        # -----------------------------
+
+        if user.role == "OWNER":
+            instruments = instruments.filter(owner=user)
+            applications = applications.filter(applicant=user)
+            certificates = certificates.filter(owner=user)
+
+        elif user.role == "GATC":
+            applications = applications.filter(assigned_to=user)
+
+            instrument_ids = applications.values_list(
+                "instrument_id",
+                flat=True,
+            )
+
+            certificate_ids = certificates.filter(
+                instrument_id__in=instrument_ids
+            ).values_list("id", flat=True)
+
+            instruments = instruments.filter(
+                id__in=instrument_ids
+            )
+
+            certificates = certificates.filter(
+                id__in=certificate_ids
+            )
+
+        elif user.role in ["LMO", "ADMIN"]:
+            pass
+
+        else:
+            return Response(
+                {
+                    "error": "You do not have permission to search."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # -----------------------------
+        # SEARCH
+        # -----------------------------
+
+        search_filter = (
+            models.Q(name__icontains=query)
+            | models.Q(instrument_type__icontains=query)
+            | models.Q(serial_number__icontains=query)
+            | models.Q(instrument_uid__icontains=query)
+            | models.Q(owner__username__icontains=query)
+        )
+
+        instrument_results = instruments.filter(
+            search_filter
+        ).distinct()[:20]
+
+        application_filter = (
+            models.Q(application_number__icontains=query)
+            | models.Q(instrument__name__icontains=query)
+            | models.Q(instrument__serial_number__icontains=query)
+            | models.Q(applicant__username__icontains=query)
+        )
+
+        application_results = applications.filter(
+            application_filter
+        ).distinct()[:20]
+
+        certificate_filter = (
+            models.Q(certificate_number__icontains=query)
+            | models.Q(instrument__name__icontains=query)
+            | models.Q(instrument__serial_number__icontains=query)
+            | models.Q(owner__username__icontains=query)
+        )
+
+        certificate_results = certificates.filter(
+            certificate_filter
+        ).distinct()[:20]
+
+        return Response(
+            {
+                "query": query,
+
+                "instruments": [
+                    {
+                        "id": instrument.id,
+                        "instrument_uid": instrument.instrument_uid,
+                        "name": instrument.name,
+                        "instrument_type": instrument.instrument_type,
+                        "serial_number": instrument.serial_number,
+                        "owner": instrument.owner.username,
+                        "status": instrument.status,
+                    }
+                    for instrument in instrument_results
+                ],
+
+                "applications": [
+                    {
+                        "id": application.id,
+                        "application_number": application.application_number,
+                        "instrument": application.instrument.name,
+                        "serial_number": application.instrument.serial_number,
+                        "applicant": application.applicant.username,
+                        "status": application.status,
+                        "application_type": application.application_type,
+                    }
+                    for application in application_results
+                ],
+
+                "certificates": [
+                    {
+                        "id": certificate.id,
+                        "certificate_number": certificate.certificate_number,
+                        "instrument": certificate.instrument.name,
+                        "serial_number": certificate.instrument.serial_number,
+                        "owner": certificate.owner.username,
+                        "issue_date": certificate.issue_date,
+                        "valid_until": certificate.valid_until,
+                        "status": certificate.status,
+                    }
+                    for certificate in certificate_results
+                ],
+            },
+            status=status.HTTP_200_OK,
         )
