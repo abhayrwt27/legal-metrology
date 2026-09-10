@@ -1,38 +1,13 @@
 from django.contrib.auth import get_user_model
-from rest_framework import serializers, status
-from rest_framework.permissions import AllowAny
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
+
+from .serializers import RegisterSerializer, UserSerializer
 
 
 User = get_user_model()
-
-
-class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=8)
-
-    class Meta:
-        model = User
-        fields = [
-            "username",
-            "email",
-            "first_name",
-            "last_name",
-            "password",
-        ]
-
-    def create(self, validated_data):
-        password = validated_data.pop("password")
-
-        user = User(
-            **validated_data,
-            role=User.Role.OWNER,
-        )
-        user.set_password(password)
-        user.save()
-
-        return user
 
 
 class RegisterView(APIView):
@@ -44,21 +19,10 @@ class RegisterView(APIView):
         if serializer.is_valid():
             user = serializer.save()
 
-            refresh = RefreshToken.for_user(user)
-
             return Response(
                 {
-                    "message": "User registered successfully",
-                    "user": {
-                        "id": user.id,
-                        "username": user.username,
-                        "email": user.email,
-                        "role": user.role,
-                    },
-                    "tokens": {
-                        "refresh": str(refresh),
-                        "access": str(refresh.access_token),
-                    },
+                    "message": "Owner account created successfully.",
+                    "user": UserSerializer(user).data,
                 },
                 status=status.HTTP_201_CREATED,
             )
@@ -66,4 +30,40 @@ class RegisterView(APIView):
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class GATCListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in [
+            User.Role.LMO,
+            User.Role.ADMIN,
+        ]:
+            return Response(
+                {
+                    "error": "Only LMO or Admin can view GATCs."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        users = (
+            User.objects
+            .filter(
+                role=User.Role.GATC,
+                is_active=True,
+            )
+            .order_by("username")
+        )
+
+        return Response(
+            [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                }
+                for user in users
+            ]
         )

@@ -24,11 +24,13 @@ class VerificationApplication(models.Model):
         on_delete=models.CASCADE,
         related_name="verification_applications",
     )
+
     applicant = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="verification_applications",
     )
+
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -36,7 +38,12 @@ class VerificationApplication(models.Model):
         blank=True,
         related_name="assigned_verification_applications",
     )
-    application_number = models.CharField(max_length=50, unique=True)
+
+    application_number = models.CharField(
+        max_length=50,
+        unique=True,
+    )
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -57,12 +64,23 @@ class VerificationApplication(models.Model):
         related_name="renewal_applications",
     )
 
-    remarks = models.TextField(blank=True)
-    submitted_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    remarks = models.TextField(
+        blank=True,
+    )
+
+    submitted_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-submitted_at"]
 
     def __str__(self):
-        return f"{self.application_number} - {self.instrument.name}"
+        return self.application_number
 
 
 class VerificationSchedule(models.Model):
@@ -77,21 +95,34 @@ class VerificationSchedule(models.Model):
         on_delete=models.CASCADE,
         related_name="schedules",
     )
+
     scheduled_date = models.DateField()
+
     scheduled_time = models.TimeField()
+
     scheduled_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="created_verification_schedules",
     )
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
         default=Status.SCHEDULED,
     )
-    remarks = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
+    remarks = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
 
     class Meta:
         ordering = ["scheduled_date", "scheduled_time"]
@@ -113,20 +144,38 @@ class Inspection(models.Model):
         on_delete=models.CASCADE,
         related_name="inspection",
     )
+
     inspector = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="inspections",
     )
+
     inspection_date = models.DateField()
-    measurements = models.JSONField(default=dict)
+
+    measurements = models.JSONField(
+        default=dict,
+    )
+
     result = models.CharField(
         max_length=10,
         choices=Result.choices,
     )
-    remarks = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
+    remarks = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-inspection_date", "-created_at"]
 
     def __str__(self):
         return (
@@ -146,34 +195,50 @@ class Certificate(models.Model):
         on_delete=models.PROTECT,
         related_name="certificate",
     )
+
     certificate_number = models.CharField(
         max_length=50,
         unique=True,
     )
+
     instrument = models.ForeignKey(
         Instrument,
         on_delete=models.PROTECT,
         related_name="certificates",
     )
+
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="certificates",
     )
+
     issued_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="issued_certificates",
     )
+
     issue_date = models.DateField()
+
     valid_until = models.DateField()
+
     status = models.CharField(
         max_length=10,
         choices=Status.choices,
         default=Status.VALID,
     )
-    remarks = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+
+    remarks = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["-issue_date", "-created_at"]
 
     def __str__(self):
         return self.certificate_number
@@ -225,6 +290,9 @@ class VerificationDocument(models.Model):
     uploaded_at = models.DateTimeField(
         auto_now_add=True,
     )
+
+    class Meta:
+        ordering = ["-uploaded_at"]
 
     def __str__(self):
         return self.file.name

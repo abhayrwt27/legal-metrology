@@ -14,3 +14,6 @@ class User(AbstractUser):
         choices=Role.choices,
         default=Role.OWNER,
     )
+
+    def __str__(self):
+        return f"{self.username} ({self.role})"

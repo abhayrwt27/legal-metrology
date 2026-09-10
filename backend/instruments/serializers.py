@@ -4,7 +4,9 @@ from .models import Instrument
 
 
 class InstrumentSerializer(serializers.ModelSerializer):
-    owner = serializers.PrimaryKeyRelatedField(read_only=True)
+    owner = serializers.PrimaryKeyRelatedField(
+        read_only=True,
+    )
 
     class Meta:
         model = Instrument
@@ -26,6 +28,7 @@ class InstrumentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
         read_only_fields = [
             "id",
             "instrument_uid",

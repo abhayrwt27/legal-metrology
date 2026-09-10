@@ -18,24 +18,60 @@ class Instrument(models.Model):
         related_name="instruments",
     )
 
-    # Permanent identity of the physical instrument.
-    # This value never changes during re-verification/renewal.
+    # Permanent identifier for the physical instrument.
+    # This value does not change when the instrument is re-verified.
     instrument_uid = models.UUIDField(
         default=uuid.uuid4,
         unique=True,
         editable=False,
     )
 
-    name = models.CharField(max_length=150)
-    instrument_type = models.CharField(max_length=100)
-    manufacturer = models.CharField(max_length=150, blank=True)
-    model_number = models.CharField(max_length=100, blank=True)
-    serial_number = models.CharField(max_length=100, unique=True)
-    capacity = models.CharField(max_length=100, blank=True)
-    accuracy = models.CharField(max_length=100, blank=True)
-    location = models.CharField(max_length=255, blank=True)
-    purchase_date = models.DateField(null=True, blank=True)
-    description = models.TextField(blank=True)
+    name = models.CharField(
+        max_length=150,
+    )
+
+    instrument_type = models.CharField(
+        max_length=100,
+    )
+
+    manufacturer = models.CharField(
+        max_length=150,
+        blank=True,
+    )
+
+    model_number = models.CharField(
+        max_length=100,
+        blank=True,
+    )
+
+    serial_number = models.CharField(
+        max_length=100,
+        unique=True,
+    )
+
+    capacity = models.CharField(
+        max_length=100,
+        blank=True,
+    )
+
+    accuracy = models.CharField(
+        max_length=100,
+        blank=True,
+    )
+
+    location = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    purchase_date = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    description = models.TextField(
+        blank=True,
+    )
 
     status = models.CharField(
         max_length=30,
@@ -43,8 +79,16 @@ class Instrument(models.Model):
         default=Status.ACTIVE,
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.name} - {self.serial_number}"

@@ -5,135 +5,151 @@ from .views import (
     AssignApplicationView,
     CertificateDetailView,
     CertificateExpiryAlertView,
-    CertificateQRCodeView,
+    CertificateListView,
     DashboardView,
-    GATCInspectionCreateView,
-    GATCInspectionDetailView,
-    OfficerApplicationDetailView,
+    InspectionCreateView,
     OfficerApplicationListView,
+    PublicCertificateQRView,
     PublicCertificateVerificationView,
+    PublicInstrumentLookupView,
+    PublicInstrumentQRView,
     PublicInstrumentVerificationView,
+    SearchView,
     VerificationApplicationDetailView,
     VerificationApplicationListCreateView,
-    VerificationScheduleCreateView,
-    InstrumentQRCodeView,
     VerificationDocumentListCreateView,
-    SearchView,
+    VerificationScheduleCreateView,
 )
 
 
 urlpatterns = [
-    # Owner
+    # -------------------------------------------------------------------------
+    # Owner applications
+    # -------------------------------------------------------------------------
     path(
         "",
         VerificationApplicationListCreateView.as_view(),
-        name="verification-list-create",
+        name="verification-application-list-create",
     ),
-
-    #certificate
-    path(
-        "certificates/<int:pk>/",
-        CertificateDetailView.as_view(),
-        name="certificate-detail",
-    ),
-
     path(
         "<int:pk>/",
         VerificationApplicationDetailView.as_view(),
-        name="verification-detail",
+        name="verification-application-detail",
     ),
 
-    # Officer
+    # -------------------------------------------------------------------------
+    # Officer applications
+    # -------------------------------------------------------------------------
     path(
         "officer/applications/",
         OfficerApplicationListView.as_view(),
         name="officer-application-list",
     ),
-
-    path(
-        "officer/applications/<int:pk>/",
-        OfficerApplicationDetailView.as_view(),
-        name="officer-application-detail",
-    ),
-
-    # LMO / Admin assignment
     path(
         "officer/applications/<int:pk>/assign/",
         AssignApplicationView.as_view(),
         name="assign-application",
     ),
-
-    path(
-        "officer/schedules/",
-        VerificationScheduleCreateView.as_view(),
-        name="verification-schedule-create",
-    ),
-
-    # LMO / Admin decision
     path(
         "officer/applications/<int:pk>/decision/",
         ApplicationDecisionView.as_view(),
         name="application-decision",
     ),
 
-    # GATC inspection
+    # -------------------------------------------------------------------------
+    # Scheduling
+    # -------------------------------------------------------------------------
+    path(
+        "officer/schedules/",
+        VerificationScheduleCreateView.as_view(),
+        name="verification-schedule-create",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Inspections
+    # -------------------------------------------------------------------------
     path(
         "officer/inspections/",
-        GATCInspectionCreateView.as_view(),
-        name="gatc-inspection-create",
+        InspectionCreateView.as_view(),
+        name="inspection-create",
     ),
 
+    # -------------------------------------------------------------------------
+    # Certificates
+    # -------------------------------------------------------------------------
     path(
-        "officer/inspections/<int:pk>/",
-        GATCInspectionDetailView.as_view(),
-        name="gatc-inspection-detail",
+        "certificates/",
+        CertificateListView.as_view(),
+        name="certificate-list",
     ),
-
     path(
-        "public/instruments/<uuid:instrument_uid>/",
-        PublicInstrumentVerificationView.as_view(),
-        name="public-instrument-verification",
+        "certificates/expiry-alerts/",
+        CertificateExpiryAlertView.as_view(),
+        name="certificate-expiry-alerts",
     ),
-
     path(
-        "public/instruments/<uuid:instrument_uid>/qr/",
-        InstrumentQRCodeView.as_view(),
-        name="instrument-qr",
+        "certificates/<int:pk>/",
+        CertificateDetailView.as_view(),
+        name="certificate-detail",
     ),
 
-    path(
-        "public/certificates/<str:certificate_number>/",
-        PublicCertificateVerificationView.as_view(),
-        name="public-certificate-verification",
-    ),
-
-    path(
-        "public/certificates/<str:certificate_number>/qr/",
-        CertificateQRCodeView.as_view(),
-        name="certificate-qr",
-    ),
-
+    # -------------------------------------------------------------------------
+    # Dashboard
+    # -------------------------------------------------------------------------
     path(
         "dashboard/",
         DashboardView.as_view(),
         name="dashboard",
     ),
 
-    path(
-        "certificates/expiry-alerts/",
-        CertificateExpiryAlertView.as_view(),
-        name="certificate-expiry-alerts",
-    ),
-
-    path(
-        "documents/",
-        VerificationDocumentListCreateView.as_view(),
-        name="verification-documents",
-    ),
-
+    # -------------------------------------------------------------------------
+    # Search
+    # -------------------------------------------------------------------------
     path(
         "search/",
         SearchView.as_view(),
         name="search",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Documents
+    # -------------------------------------------------------------------------
+    path(
+        "documents/",
+        VerificationDocumentListCreateView.as_view(),
+        name="verification-document-list-create",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Public instrument verification
+    # -------------------------------------------------------------------------
+    path(
+        "public/instruments/<uuid:instrument_uid>/",
+        PublicInstrumentVerificationView.as_view(),
+        name="public-instrument-verification",
+    ),
+    path(
+        "public/instruments/<uuid:instrument_uid>/qr/",
+        PublicInstrumentQRView.as_view(),
+        name="public-instrument-qr",
+    ),
+    path(
+        "public/instruments/lookup/",
+        PublicInstrumentLookupView.as_view(),
+        name="public-instrument-lookup",
+    ),
+
+    # -------------------------------------------------------------------------
+    # Public certificate verification
+    # -------------------------------------------------------------------------
+    path(
+        "public/certificates/<str:certificate_number>/",
+        PublicCertificateVerificationView.as_view(),
+        name="public-certificate-verification",
+    ),
+    path(
+        "public/certificates/<str:certificate_number>/qr/",
+        PublicCertificateQRView.as_view(),
+        name="public-certificate-qr",
     ),
 ]

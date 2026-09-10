@@ -1,12 +1,21 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
-from .views import (
-    InstrumentDetailView,
-    InstrumentListCreateView,
+from .views import InstrumentViewSet
+
+
+router = DefaultRouter()
+
+router.register(
+    "",
+    InstrumentViewSet,
+    basename="instrument",
 )
 
 
 urlpatterns = [
-    path("", InstrumentListCreateView.as_view(), name="instrument-list-create"),
-    path("<int:pk>/", InstrumentDetailView.as_view(), name="instrument-detail"),
+    path(
+        "",
+        include(router.urls),
+    ),
 ]
